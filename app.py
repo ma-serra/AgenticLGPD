@@ -91,7 +91,9 @@ try:
         chunks_jurisprudencia = json.load(f)
     index_jurisprudencia = faiss.read_index("lei_faiss_jurisprudencia.index")
     bm25_jurisprudencia, tokenized_chunks_jurisprudencia = create_bm25_index(chunks_jurisprudencia)
-    resources_ready = True
+    resources_ready = embed_model is not None
+    if not resources_ready and embed_model_error:
+        resources_error = embed_model_error
 except FileNotFoundError as exc:
     resources_error = f"Arquivos de dados ausentes: {exc}"
 except Exception as exc:
@@ -145,11 +147,16 @@ def guard_api_key(state=None):
     return False
 
 
-def guard_resources_available(state):
-    if not resources_ready or embed_model is None:
-        state["answer"] = RESOURCE_UNAVAILABLE_MESSAGE
-        return False
-    return True
+def guard_resources_available(state=None):
+    if resources_ready:
+        return True
+    message = RESOURCE_UNAVAILABLE_MESSAGE
+    if embed_model is None:
+        detail = embed_model_error or EMBED_MODEL_FALLBACK_ERROR
+        message = f"{EMBED_MODEL_ERROR_PREFIX} ({detail}). Verifique os requisitos antes de implantar."
+    if state is not None:
+        state["answer"] = message
+    return False
 
 def retrieve_docs_lei(state):
     if not guard_resources_available(state):
@@ -247,12 +254,9 @@ def hf_chat(user_input, history):
     if not guard_api_key():
         return API_KEY_MISSING_MESSAGE
 
-    if embed_model is None:
-        embed_error_msg = embed_model_error or EMBED_MODEL_FALLBACK_ERROR
-        return f"{EMBED_MODEL_ERROR_PREFIX} ({embed_error_msg}). Verifique os requisitos antes de implantar."
-
-    if not resources_ready:
-        return RESOURCE_UNAVAILABLE_MESSAGE
+    availability_state = {}
+    if not guard_resources_available(availability_state):
+        return availability_state.get("answer", RESOURCE_UNAVAILABLE_MESSAGE)
 
     # 1. Checagem do tamanho da entrada do usuário
     if len(user_input) > MAX_INPUT_LENGTH:
