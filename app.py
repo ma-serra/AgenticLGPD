@@ -100,7 +100,7 @@ except Exception as exc:
 # ---------------------------
 def check_question(state):
     if not api_key:
-        state["topic"] = "off_topic_response"
+        state["topic"] = "config_error"
         state["answer"] = API_KEY_MISSING_MESSAGE
         return state
 
@@ -118,6 +118,8 @@ def check_question(state):
 
 def topic_router(state):
     topic = state['topic']
+    if topic == "config_error":
+        return "off_topic_response"
     if topic == "Lei":
         return "retrieve_docs_lei"
     elif topic == "Jurisprudencia":
@@ -128,7 +130,7 @@ def topic_router(state):
         return "off_topic_response"
 
 def off_topic_response(state):
-    if state.get("answer"):
+    if state.get("topic") == "config_error" and state.get("answer"):
         return state
     state['answer'] = "Desculpe, só posso esclarecer dúvidas relacionadas à LGPD."
     return state
@@ -156,6 +158,8 @@ def retrieve_docs_lei_jurisprudencia(state):
         state["answer"] = RESOURCE_UNAVAILABLE_MESSAGE
         return state
     state = retrieve_docs_lei(state)
+    if state.get("answer"):
+        return state
     state = retrieve_docs_jurisprudencia(state)
     return state
 
