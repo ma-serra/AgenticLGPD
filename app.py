@@ -91,7 +91,7 @@ try:
         chunks_jurisprudencia = json.load(f)
     index_jurisprudencia = faiss.read_index("lei_faiss_jurisprudencia.index")
     bm25_jurisprudencia, tokenized_chunks_jurisprudencia = create_bm25_index(chunks_jurisprudencia)
-    resources_ready = embed_model is not None
+    resources_ready = embed_model is not None and not embed_model_error
     if not resources_ready and embed_model_error:
         resources_error = embed_model_error
 except FileNotFoundError as exc:
@@ -151,7 +151,7 @@ def guard_resources_available(state=None):
     if resources_ready:
         return True
     message = RESOURCE_UNAVAILABLE_MESSAGE
-    if embed_model is None:
+    if not resources_ready and embed_model_error is not None:
         detail = embed_model_error or EMBED_MODEL_FALLBACK_ERROR
         message = f"{EMBED_MODEL_ERROR_PREFIX} ({detail}). Verifique os requisitos antes de implantar."
     if state is not None:
@@ -178,7 +178,10 @@ def retrieve_docs_lei_jurisprudencia(state):
     if not guard_resources_available(state):
         return state
     state = retrieve_docs_lei(state)
-    if state.get("answer"):
+    if state.get("answer") in {
+        RESOURCE_UNAVAILABLE_MESSAGE,
+        f"{EMBED_MODEL_ERROR_PREFIX} ({embed_model_error or EMBED_MODEL_FALLBACK_ERROR}). Verifique os requisitos antes de implantar."
+    }:
         return state
     state = retrieve_docs_jurisprudencia(state)
     return state
