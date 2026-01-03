@@ -17,6 +17,7 @@ import gradio as gr
 api_key = os.environ.get("OPENAI_API_KEY")
 API_KEY_MISSING_MESSAGE = "Defina a variável de ambiente OPENAI_API_KEY para usar o agente."
 RESOURCE_UNAVAILABLE_MESSAGE = "Os índices e arquivos de dados não estão disponíveis no servidor. Inclua os arquivos *.json e *.index antes de iniciar."
+EMBED_MODEL_ERROR_PREFIX = "Não foi possível carregar o modelo de embeddings"
 
 # ---------------------------
 # Carregar modelo de embeddings
@@ -158,7 +159,7 @@ def retrieve_docs_lei_jurisprudencia(state):
         state["answer"] = RESOURCE_UNAVAILABLE_MESSAGE
         return state
     state = retrieve_docs_lei(state)
-    if state.get("answer") and not state.get("documents_lei"):
+    if state.get("answer") == RESOURCE_UNAVAILABLE_MESSAGE:
         return state
     state = retrieve_docs_jurisprudencia(state)
     return state
@@ -236,7 +237,7 @@ def hf_chat(user_input, history):
 
     if embed_model is None:
         embed_error_msg = embed_model_error or "falha desconhecida ao carregar o modelo de embeddings"
-        return f"Não foi possível carregar o modelo de embeddings ({embed_error_msg}). Verifique os requisitos antes de implantar."
+        return f"{EMBED_MODEL_ERROR_PREFIX} ({embed_error_msg}). Verifique os requisitos antes de implantar."
 
     if not resources_ready:
         return RESOURCE_UNAVAILABLE_MESSAGE
