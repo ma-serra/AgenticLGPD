@@ -18,6 +18,7 @@ api_key = os.environ.get("OPENAI_API_KEY")
 API_KEY_MISSING_MESSAGE = "Defina a variável de ambiente OPENAI_API_KEY para usar o agente."
 RESOURCE_UNAVAILABLE_MESSAGE = "Os índices e arquivos de dados não estão disponíveis no servidor. Inclua os arquivos *.json e *.index antes de iniciar."
 EMBED_MODEL_ERROR_PREFIX = "Não foi possível carregar o modelo de embeddings"
+EMBED_MODEL_FALLBACK_ERROR = "falha desconhecida ao carregar o modelo de embeddings"
 
 # ---------------------------
 # Carregar modelo de embeddings
@@ -163,8 +164,6 @@ def retrieve_docs_lei_jurisprudencia(state):
     if not ensure_resources_available(state):
         return state
     state = retrieve_docs_lei(state)
-    if state.get("answer") == RESOURCE_UNAVAILABLE_MESSAGE:
-        return state
     state = retrieve_docs_jurisprudencia(state)
     return state
 
@@ -240,7 +239,7 @@ def hf_chat(user_input, history):
         return API_KEY_MISSING_MESSAGE
 
     if embed_model is None:
-        embed_error_msg = embed_model_error or "falha desconhecida ao carregar o modelo de embeddings"
+        embed_error_msg = embed_model_error or EMBED_MODEL_FALLBACK_ERROR
         return f"{EMBED_MODEL_ERROR_PREFIX} ({embed_error_msg}). Verifique os requisitos antes de implantar."
 
     if not resources_ready:
