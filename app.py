@@ -136,9 +136,15 @@ def off_topic_response(state):
     state['answer'] = "Desculpe, só posso esclarecer dúvidas relacionadas à LGPD."
     return state
 
-def retrieve_docs_lei(state):
+
+def ensure_resources_available(state):
     if not resources_ready or embed_model is None:
         state["answer"] = RESOURCE_UNAVAILABLE_MESSAGE
+        return False
+    return True
+
+def retrieve_docs_lei(state):
+    if not ensure_resources_available(state):
         return state
     # Usa os dados carregados globalmente
     docs_faiss = hybrid_search(state['question'], chunks_lei, bm25_lei, tokenized_chunks_lei, index_lei, embed_model)
@@ -146,8 +152,7 @@ def retrieve_docs_lei(state):
     return state
 
 def retrieve_docs_jurisprudencia(state):
-    if not resources_ready or embed_model is None:
-        state["answer"] = RESOURCE_UNAVAILABLE_MESSAGE
+    if not ensure_resources_available(state):
         return state
     # Usa os dados carregados globalmente
     docs_faiss = hybrid_search(state['question'], chunks_jurisprudencia, bm25_jurisprudencia, tokenized_chunks_jurisprudencia, index_jurisprudencia, embed_model)
@@ -155,8 +160,7 @@ def retrieve_docs_jurisprudencia(state):
     return state
 
 def retrieve_docs_lei_jurisprudencia(state):
-    if not resources_ready or embed_model is None:
-        state["answer"] = RESOURCE_UNAVAILABLE_MESSAGE
+    if not ensure_resources_available(state):
         return state
     state = retrieve_docs_lei(state)
     if state.get("answer") == RESOURCE_UNAVAILABLE_MESSAGE:

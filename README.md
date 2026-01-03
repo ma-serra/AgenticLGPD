@@ -67,5 +67,5 @@ Agentic-LGPD/
 ├─ lei_chunks_com_metadados_jurisprudencia.json
 ├─ lei_faiss_lei.index
 ├─ lei_faiss_jurisprudencia.index
-├─ agentic_lgpd.py # Código principal do agente
+├─ app.py # Código principal do agente
 └─ README.md
