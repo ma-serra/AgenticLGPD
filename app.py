@@ -101,9 +101,7 @@ except Exception as exc:
 # Funções do agente
 # ---------------------------
 def check_question(state):
-    if not api_key:
-        state["topic"] = "config_error"
-        state["answer"] = API_KEY_MISSING_MESSAGE
+    if not guard_api_key(state):
         return state
 
     system_prompt = """Você é um avaliador especializado em proteção de dados pessoais. Sua tarefa é verificar se a pergunta feita pelo usuário está relacionada à LGPD ou jurisprudência.
@@ -138,14 +136,23 @@ def off_topic_response(state):
     return state
 
 
-def ensure_resources_available(state):
+def guard_api_key(state=None):
+    if api_key:
+        return True
+    if state is not None:
+        state["topic"] = "config_error"
+        state["answer"] = API_KEY_MISSING_MESSAGE
+    return False
+
+
+def guard_resources_available(state):
     if not resources_ready or embed_model is None:
         state["answer"] = RESOURCE_UNAVAILABLE_MESSAGE
         return False
     return True
 
 def retrieve_docs_lei(state):
-    if not ensure_resources_available(state):
+    if not guard_resources_available(state):
         return state
     # Usa os dados carregados globalmente
     docs_faiss = hybrid_search(state['question'], chunks_lei, bm25_lei, tokenized_chunks_lei, index_lei, embed_model)
@@ -153,7 +160,7 @@ def retrieve_docs_lei(state):
     return state
 
 def retrieve_docs_jurisprudencia(state):
-    if not ensure_resources_available(state):
+    if not guard_resources_available(state):
         return state
     # Usa os dados carregados globalmente
     docs_faiss = hybrid_search(state['question'], chunks_jurisprudencia, bm25_jurisprudencia, tokenized_chunks_jurisprudencia, index_jurisprudencia, embed_model)
@@ -161,9 +168,11 @@ def retrieve_docs_jurisprudencia(state):
     return state
 
 def retrieve_docs_lei_jurisprudencia(state):
-    if not ensure_resources_available(state):
+    if not guard_resources_available(state):
         return state
     state = retrieve_docs_lei(state)
+    if state.get("answer"):
+        return state
     state = retrieve_docs_jurisprudencia(state)
     return state
 
@@ -235,7 +244,7 @@ def hf_chat(user_input, history):
     MAX_INPUT_LENGTH = 1000
     MAX_MEMORY_TURNS = 5
 
-    if not api_key:
+    if not guard_api_key():
         return API_KEY_MISSING_MESSAGE
 
     if embed_model is None:
