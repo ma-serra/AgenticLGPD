@@ -15,12 +15,21 @@ import gradio as gr
 # Variáveis de ambiente
 # ---------------------------
 api_key = os.environ.get("OPENAI_API_KEY")
+API_KEY_MISSING_MESSAGE = "Defina a variável de ambiente OPENAI_API_KEY para usar o agente."
+RESOURCE_UNAVAILABLE_MESSAGE = "Os índices e arquivos de dados não estão disponíveis no servidor. Inclua os arquivos *.json e *.index antes de iniciar."
+EMBED_MODEL_ERROR_PREFIX = "Não foi possível carregar o modelo de embeddings"
+EMBED_MODEL_FALLBACK_ERROR = "falha desconhecida ao carregar o modelo de embeddings"
 
 # ---------------------------
 # Carregar modelo de embeddings
 # ---------------------------
 model_name = "sentence-transformers/all-mpnet-base-v2"
-embed_model = SentenceTransformer(model_name)
+try:
+    embed_model = SentenceTransformer(model_name)
+    embed_model_error = None
+except Exception as exc:
+    embed_model = None
+    embed_model_error = str(exc)
 
 # ---------------------------
 # Funções de recuperação de documentos
@@ -61,20 +70,42 @@ class AgentState(TypedDict):
 # ---------------------------------------------
 # PRÉ-CARREGAMENTO DE DADOS E ÍNDICES (OTIMIZAÇÃO)
 # ---------------------------------------------
-with open("lei_chunks_com_metadados_lei.json", "r", encoding="utf-8") as f:
-    chunks_lei = json.load(f)
-index_lei = faiss.read_index("lei_faiss_lei.index")
-bm25_lei, tokenized_chunks_lei = create_bm25_index(chunks_lei)
+chunks_lei = []
+chunks_jurisprudencia = []
+bm25_lei = None
+bm25_jurisprudencia = None
+tokenized_chunks_lei = []
+tokenized_chunks_jurisprudencia = []
+index_lei = None
+index_jurisprudencia = None
+resources_ready = False
+resources_error = None
 
-with open("lei_chunks_com_metadados_jurisprudencia.json", "r", encoding="utf-8") as f:
-    chunks_jurisprudencia = json.load(f)
-index_jurisprudencia = faiss.read_index("lei_faiss_jurisprudencia.index")
-bm25_jurisprudencia, tokenized_chunks_jurisprudencia = create_bm25_index(chunks_jurisprudencia)
+try:
+    with open("lei_chunks_com_metadados_lei.json", "r", encoding="utf-8") as f:
+        chunks_lei = json.load(f)
+    index_lei = faiss.read_index("lei_faiss_lei.index")
+    bm25_lei, tokenized_chunks_lei = create_bm25_index(chunks_lei)
+
+    with open("lei_chunks_com_metadados_jurisprudencia.json", "r", encoding="utf-8") as f:
+        chunks_jurisprudencia = json.load(f)
+    index_jurisprudencia = faiss.read_index("lei_faiss_jurisprudencia.index")
+    bm25_jurisprudencia, tokenized_chunks_jurisprudencia = create_bm25_index(chunks_jurisprudencia)
+    resources_ready = embed_model is not None and not embed_model_error
+    if not resources_ready and embed_model_error:
+        resources_error = embed_model_error
+except FileNotFoundError as exc:
+    resources_error = f"Arquivos de dados ausentes: {exc}"
+except Exception as exc:
+    resources_error = str(exc)
 
 # ---------------------------
 # Funções do agente
 # ---------------------------
 def check_question(state):
+    if not guard_api_key(state):
+        return state
+
     system_prompt = """Você é um avaliador especializado em proteção de dados pessoais. Sua tarefa é verificar se a pergunta feita pelo usuário está relacionada à LGPD ou jurisprudência.
     Responda com: "Lei", "Jurisprudencia", "Lei,Jurisprudencia" ou "False"."""
     TEMPLATE = ChatPromptTemplate.from_messages([
@@ -89,6 +120,8 @@ def check_question(state):
 
 def topic_router(state):
     topic = state['topic']
+    if topic == "config_error":
+        return "off_topic_response"
     if topic == "Lei":
         return "retrieve_docs_lei"
     elif topic == "Jurisprudencia":
@@ -99,23 +132,55 @@ def topic_router(state):
         return "off_topic_response"
 
 def off_topic_response(state):
+    if state.get("topic") == "config_error" and state.get("answer"):
+        return state
     state['answer'] = "Desculpe, só posso esclarecer dúvidas relacionadas à LGPD."
     return state
 
+
+def guard_api_key(state=None):
+    if api_key:
+        return True
+    if state is not None:
+        state["topic"] = "config_error"
+        state["answer"] = API_KEY_MISSING_MESSAGE
+    return False
+
+
+def guard_resources_available(state=None):
+    if resources_ready:
+        return True
+    message = RESOURCE_UNAVAILABLE_MESSAGE
+    if embed_model_error is not None:
+        detail = embed_model_error or EMBED_MODEL_FALLBACK_ERROR
+        message = f"{EMBED_MODEL_ERROR_PREFIX} ({detail}). Verifique os requisitos antes de implantar."
+    if state is not None:
+        state["answer"] = message
+        state["resource_error"] = True
+    return False
+
 def retrieve_docs_lei(state):
+    if not guard_resources_available(state):
+        return state
     # Usa os dados carregados globalmente
     docs_faiss = hybrid_search(state['question'], chunks_lei, bm25_lei, tokenized_chunks_lei, index_lei, embed_model)
     state['documents_lei'] = [doc["texto"] for doc in docs_faiss]
     return state
 
 def retrieve_docs_jurisprudencia(state):
+    if not guard_resources_available(state):
+        return state
     # Usa os dados carregados globalmente
     docs_faiss = hybrid_search(state['question'], chunks_jurisprudencia, bm25_jurisprudencia, tokenized_chunks_jurisprudencia, index_jurisprudencia, embed_model)
     state['documents_jurisprudencia'] = [doc["texto"] for doc in docs_faiss]
     return state
 
 def retrieve_docs_lei_jurisprudencia(state):
+    if not guard_resources_available(state):
+        return state
     state = retrieve_docs_lei(state)
+    if state.get("resource_error"):
+        return state
     state = retrieve_docs_jurisprudencia(state)
     return state
 
@@ -186,6 +251,13 @@ def hf_chat(user_input, history):
     # Limites para controle de tokens
     MAX_INPUT_LENGTH = 1000
     MAX_MEMORY_TURNS = 5
+
+    if not guard_api_key():
+        return API_KEY_MISSING_MESSAGE
+
+    availability_state = {}
+    if not guard_resources_available(availability_state):
+        return availability_state.get("answer", RESOURCE_UNAVAILABLE_MESSAGE)
 
     # 1. Checagem do tamanho da entrada do usuário
     if len(user_input) > MAX_INPUT_LENGTH:

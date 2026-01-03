@@ -53,6 +53,13 @@ O fluxo de estados do agente:
 
 ---
 
+## ✅ Pré-requisitos para rodar ou implantar
+- Defina a variável de ambiente `OPENAI_API_KEY`.
+- Copie para a raiz do projeto os arquivos de dados e índices citados na estrutura (`lei_chunks_com_metadados_lei.json`, `lei_chunks_com_metadados_jurisprudencia.json`, `lei_faiss_lei.index`, `lei_faiss_jurisprudencia.index`). Eles não estão versionados neste repositório.
+- Sem esses arquivos o app será inicializado, mas informará que os recursos de busca não estão disponíveis.
+
+---
+
 ## 📦 Estrutura do projeto
 Agentic-LGPD/
 │
@@ -60,6 +67,5 @@ Agentic-LGPD/
 ├─ lei_chunks_com_metadados_jurisprudencia.json
 ├─ lei_faiss_lei.index
 ├─ lei_faiss_jurisprudencia.index
-├─ agentic_lgpd.py # Código principal do agente
+├─ app.py # Código principal do agente
 └─ README.md
-
