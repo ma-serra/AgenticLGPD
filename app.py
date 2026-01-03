@@ -151,11 +151,12 @@ def guard_resources_available(state=None):
     if resources_ready:
         return True
     message = RESOURCE_UNAVAILABLE_MESSAGE
-    if not resources_ready and embed_model_error is not None:
+    if embed_model_error is not None:
         detail = embed_model_error or EMBED_MODEL_FALLBACK_ERROR
         message = f"{EMBED_MODEL_ERROR_PREFIX} ({detail}). Verifique os requisitos antes de implantar."
     if state is not None:
         state["answer"] = message
+        state["resource_error"] = True
     return False
 
 def retrieve_docs_lei(state):
@@ -178,10 +179,7 @@ def retrieve_docs_lei_jurisprudencia(state):
     if not guard_resources_available(state):
         return state
     state = retrieve_docs_lei(state)
-    if state.get("answer") in {
-        RESOURCE_UNAVAILABLE_MESSAGE,
-        f"{EMBED_MODEL_ERROR_PREFIX} ({embed_model_error or EMBED_MODEL_FALLBACK_ERROR}). Verifique os requisitos antes de implantar."
-    }:
+    if state.get("resource_error"):
         return state
     state = retrieve_docs_jurisprudencia(state)
     return state
