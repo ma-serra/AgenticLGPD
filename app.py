@@ -20,7 +20,12 @@ api_key = os.environ.get("OPENAI_API_KEY")
 # Carregar modelo de embeddings
 # ---------------------------
 model_name = "sentence-transformers/all-mpnet-base-v2"
-embed_model = SentenceTransformer(model_name)
+try:
+    embed_model = SentenceTransformer(model_name)
+    embed_model_error = None
+except Exception as exc:
+    embed_model = None
+    embed_model_error = str(exc)
 
 # ---------------------------
 # Funções de recuperação de documentos
@@ -61,15 +66,29 @@ class AgentState(TypedDict):
 # ---------------------------------------------
 # PRÉ-CARREGAMENTO DE DADOS E ÍNDICES (OTIMIZAÇÃO)
 # ---------------------------------------------
-with open("lei_chunks_com_metadados_lei.json", "r", encoding="utf-8") as f:
-    chunks_lei = json.load(f)
-index_lei = faiss.read_index("lei_faiss_lei.index")
-bm25_lei, tokenized_chunks_lei = create_bm25_index(chunks_lei)
+chunks_lei = []
+chunks_jurisprudencia = []
+bm25_lei = bm25_jurisprudencia = None
+tokenized_chunks_lei = tokenized_chunks_jurisprudencia = []
+index_lei = index_jurisprudencia = None
+resources_ready = False
+resources_error = None
 
-with open("lei_chunks_com_metadados_jurisprudencia.json", "r", encoding="utf-8") as f:
-    chunks_jurisprudencia = json.load(f)
-index_jurisprudencia = faiss.read_index("lei_faiss_jurisprudencia.index")
-bm25_jurisprudencia, tokenized_chunks_jurisprudencia = create_bm25_index(chunks_jurisprudencia)
+try:
+    with open("lei_chunks_com_metadados_lei.json", "r", encoding="utf-8") as f:
+        chunks_lei = json.load(f)
+    index_lei = faiss.read_index("lei_faiss_lei.index")
+    bm25_lei, tokenized_chunks_lei = create_bm25_index(chunks_lei)
+
+    with open("lei_chunks_com_metadados_jurisprudencia.json", "r", encoding="utf-8") as f:
+        chunks_jurisprudencia = json.load(f)
+    index_jurisprudencia = faiss.read_index("lei_faiss_jurisprudencia.index")
+    bm25_jurisprudencia, tokenized_chunks_jurisprudencia = create_bm25_index(chunks_jurisprudencia)
+    resources_ready = True
+except FileNotFoundError as exc:
+    resources_error = f"Arquivos de dados ausentes: {exc}"
+except Exception as exc:
+    resources_error = str(exc)
 
 # ---------------------------
 # Funções do agente
@@ -186,6 +205,15 @@ def hf_chat(user_input, history):
     # Limites para controle de tokens
     MAX_INPUT_LENGTH = 1000
     MAX_MEMORY_TURNS = 5
+
+    if not api_key:
+        return "Defina a variável de ambiente OPENAI_API_KEY para usar o agente."
+
+    if embed_model is None:
+        return f"Não foi possível carregar o modelo de embeddings ({embed_model_error}). Verifique os requisitos antes de implantar."
+
+    if not resources_ready:
+        return "Os índices e arquivos de dados não estão disponíveis no servidor. Inclua os arquivos *.json e *.index antes de iniciar."
 
     # 1. Checagem do tamanho da entrada do usuário
     if len(user_input) > MAX_INPUT_LENGTH:
