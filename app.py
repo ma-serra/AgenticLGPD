@@ -158,7 +158,7 @@ def retrieve_docs_lei_jurisprudencia(state):
         state["answer"] = RESOURCE_UNAVAILABLE_MESSAGE
         return state
     state = retrieve_docs_lei(state)
-    if state.get("answer"):
+    if state.get("answer") and not state.get("documents_lei"):
         return state
     state = retrieve_docs_jurisprudencia(state)
     return state
@@ -235,7 +235,8 @@ def hf_chat(user_input, history):
         return API_KEY_MISSING_MESSAGE
 
     if embed_model is None:
-        return f"Não foi possível carregar o modelo de embeddings ({embed_model_error}). Verifique os requisitos antes de implantar."
+        embed_error_msg = embed_model_error or "falha desconhecida ao carregar o modelo de embeddings"
+        return f"Não foi possível carregar o modelo de embeddings ({embed_error_msg}). Verifique os requisitos antes de implantar."
 
     if not resources_ready:
         return RESOURCE_UNAVAILABLE_MESSAGE
