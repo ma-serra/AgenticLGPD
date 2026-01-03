@@ -15,6 +15,8 @@ import gradio as gr
 # Variáveis de ambiente
 # ---------------------------
 api_key = os.environ.get("OPENAI_API_KEY")
+API_KEY_MISSING_MESSAGE = "Defina a variável de ambiente OPENAI_API_KEY para usar o agente."
+RESOURCE_UNAVAILABLE_MESSAGE = "Os índices e arquivos de dados não estão disponíveis no servidor. Inclua os arquivos *.json e *.index antes de iniciar."
 
 # ---------------------------
 # Carregar modelo de embeddings
@@ -68,9 +70,12 @@ class AgentState(TypedDict):
 # ---------------------------------------------
 chunks_lei = []
 chunks_jurisprudencia = []
-bm25_lei = bm25_jurisprudencia = None
-tokenized_chunks_lei = tokenized_chunks_jurisprudencia = []
-index_lei = index_jurisprudencia = None
+bm25_lei = None
+bm25_jurisprudencia = None
+tokenized_chunks_lei = []
+tokenized_chunks_jurisprudencia = []
+index_lei = None
+index_jurisprudencia = None
 resources_ready = False
 resources_error = None
 
@@ -94,6 +99,11 @@ except Exception as exc:
 # Funções do agente
 # ---------------------------
 def check_question(state):
+    if not api_key:
+        state["topic"] = "off_topic_response"
+        state["answer"] = API_KEY_MISSING_MESSAGE
+        return state
+
     system_prompt = """Você é um avaliador especializado em proteção de dados pessoais. Sua tarefa é verificar se a pergunta feita pelo usuário está relacionada à LGPD ou jurisprudência.
     Responda com: "Lei", "Jurisprudencia", "Lei,Jurisprudencia" ou "False"."""
     TEMPLATE = ChatPromptTemplate.from_messages([
@@ -118,22 +128,33 @@ def topic_router(state):
         return "off_topic_response"
 
 def off_topic_response(state):
+    if state.get("answer"):
+        return state
     state['answer'] = "Desculpe, só posso esclarecer dúvidas relacionadas à LGPD."
     return state
 
 def retrieve_docs_lei(state):
+    if not resources_ready or embed_model is None:
+        state["answer"] = RESOURCE_UNAVAILABLE_MESSAGE
+        return state
     # Usa os dados carregados globalmente
     docs_faiss = hybrid_search(state['question'], chunks_lei, bm25_lei, tokenized_chunks_lei, index_lei, embed_model)
     state['documents_lei'] = [doc["texto"] for doc in docs_faiss]
     return state
 
 def retrieve_docs_jurisprudencia(state):
+    if not resources_ready or embed_model is None:
+        state["answer"] = RESOURCE_UNAVAILABLE_MESSAGE
+        return state
     # Usa os dados carregados globalmente
     docs_faiss = hybrid_search(state['question'], chunks_jurisprudencia, bm25_jurisprudencia, tokenized_chunks_jurisprudencia, index_jurisprudencia, embed_model)
     state['documents_jurisprudencia'] = [doc["texto"] for doc in docs_faiss]
     return state
 
 def retrieve_docs_lei_jurisprudencia(state):
+    if not resources_ready or embed_model is None:
+        state["answer"] = RESOURCE_UNAVAILABLE_MESSAGE
+        return state
     state = retrieve_docs_lei(state)
     state = retrieve_docs_jurisprudencia(state)
     return state
@@ -207,13 +228,13 @@ def hf_chat(user_input, history):
     MAX_MEMORY_TURNS = 5
 
     if not api_key:
-        return "Defina a variável de ambiente OPENAI_API_KEY para usar o agente."
+        return API_KEY_MISSING_MESSAGE
 
     if embed_model is None:
         return f"Não foi possível carregar o modelo de embeddings ({embed_model_error}). Verifique os requisitos antes de implantar."
 
     if not resources_ready:
-        return "Os índices e arquivos de dados não estão disponíveis no servidor. Inclua os arquivos *.json e *.index antes de iniciar."
+        return RESOURCE_UNAVAILABLE_MESSAGE
 
     # 1. Checagem do tamanho da entrada do usuário
     if len(user_input) > MAX_INPUT_LENGTH:
